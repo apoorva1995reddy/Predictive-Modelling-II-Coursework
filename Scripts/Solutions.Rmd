@@ -1,0 +1,86 @@
+---
+title: "Exercise2-Problem3"
+author: "Anisha"
+date: "18 August 2018"
+output: 
+  github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Association Rules
+```{r, include =FALSE}
+library(tidyverse)
+library(arules)
+library(arulesViz)
+```
+
+We have multiple baskets of grocery items and will find some interesting association rules using the items in these baskets. This is how the data looks like after reading from the text file:
+
+```{r}
+groceries = scan("../data/groceries.txt", what="", sep="\n")
+print(paste("number of baskets = ", length(groceries)))
+head(groceries)
+```
+
+Transforming the data to make it readable in a transaction format accepted by arules package:
+
+```{r}
+y = strsplit(groceries, ",")
+gro_trans = as(y, "transactions")
+summary(gro_trans)
+```
+
+Few points to note from the summary:  
+1. Presenece of 169 different items in all the transactions combined.  
+2. Whole milk, other vegetables, rolls/buns are the most frequently bought items.    
+3. 2159 out of 9835 transactions have only one item in the cart.  
+4. 75% transactions have less than 6 items in the cart. 
+  
+Now we will run the apriori algorithm to get the rules from these transactions. In order to select threshold for support, let us consider itemsets which appear atleast in 50 baskets out of 9835. That converts to a support threshold of $(50/9835)$ = `r round(50/9835,3)`. Threshold for confidence will be fixed at 0.2 to ensure that atleast 1 of 5 baskets that contain X also have Y in them(for the rule X -> Y). Also we put in the paramenter minlen = 2 to avoid rules with NULL value of X.
+
+```{r}
+groceryrules = apriori(gro_trans, 
+                     parameter=list(support=0.005, confidence=.2, minlen=2))
+```
+
+This created 872 rules. Let us plot these rules.
+```{r, echo=FALSE, message=FALSE}
+plot(groceryrules)
+```
+
+It is observed that rules with high lift have low support. 
+
+
+Looking at the two-key plot for studying the variations in rules with size of itemset:  
+```{r, echo=FALSE, message=FALSE}
+plot(groceryrules, method='two-key plot')
+```
+
+All the rules of higher order have low support and itemsets of lower order have low confidence. Lets examine these rules.  
+
+####Rules with high lift  
+```{r}
+inspect(subset(groceryrules, lift > 3.5))
+```
+
+####Rules with low confidence and high support rules.
+```{r}
+inspect(subset(groceryrules, support > 0.025 & confidence < 0.35))
+```
+
+Items in these rules are the most frequently bought items as we saw from the summary of transactions. This explains the high support of these rules and low confidence.
+
+####Rules with high confidence and high support:  
+```{r}
+inspect(subset(groceryrules, support > 0.025 & confidence > 0.35))
+```
+
+####Rules on network graph
+```{r}
+sub1 = subset(groceryrules, subset=support > 0.025 & confidence > 0.35)
+plot(sub1, method='graph')
+plot(head(sub1, 5, by='lift'), method='graph')
+```
