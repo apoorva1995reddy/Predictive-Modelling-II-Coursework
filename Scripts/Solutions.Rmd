@@ -9,6 +9,12 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+
+
+
+
+
 ##Problem1
 
 Loading and cleaning data
@@ -99,6 +105,7 @@ ggplot(data = DF_Q1, aes(x = Dephr ,y = as.factor(DayOfWeek))) +
   coord_equal(ratio = 1)+ scale_fill_viridis(option="magma") + theme_tufte(base_family="Helvetica")+ggtitle("Avg delay in minutes")+xlab("Departure time")
 
 ```
+
 Though there are very few flights during early mornings, avg delays tend to be longer for these flights 
 
 ```{r,warning=FALSE}
@@ -180,6 +187,266 @@ ggplot(data = DF_Q4_1, aes(x=as.factor(Month),y=name)) + geom_tile(aes(fill=Mont
 DL and DFW airorts had many cancellations in the first half year, the numbers improved great deal in the later part of the year 
 
 You can see that William P Hobby aiport and George Bush International airpoprts had more cancellations in September that increased the overall cancellations due to bad weather for the month. This is because of Hurrican Ike, tropical cyclone , sixth costliest Atlantic hurraine that severely affected Texas 
+
+
+
+
+
+
+
+##Problem2
+
+## Author Attribution
+
+In the C50train directory, you have ~50 articles from each of 50 different authors (one author per directory). Use this training data (and this data alone) to build the two models. Then apply your model to the articles by the same authors in the C50test directory, which is about the same size as the training set. How well do your models do at predicting the author identities in this out-of-sample setting? Are there any sets of authors whose articles seem difficult to distinguish from one another? Which model do you prefer?
+
+
+#### Loading necessary libraries
+
+```{r echo = T, results = 'hide', warnings=FALSE}
+library(tm) 
+library(magrittr)
+library(slam)
+library(proxy)
+```
+
+#### Reading Train and Test data from the files
+```{r echo = T, results = 'hide'}
+readerPlain = function(fname){
+  readPlain(elem=list(content=readLines(fname)), 
+            id=fname, language='en') 
+}
+
+train_list = Sys.glob('../data/ReutersC50/C50train/*/*.txt')
+train = lapply(train_list, readerPlain) 
+
+
+
+test_list = Sys.glob('../data/ReutersC50/C50test/*/*.txt')
+test = lapply(test_list, readerPlain) 
+
+mynames = train_list %>%
+{ strsplit(., '/', fixed=TRUE) } %>%
+{ lapply(., tail, n=2) } %>%
+{ lapply(., paste0, collapse = '') } %>%
+  unlist
+
+
+mynamestest = test_list %>%
+{ strsplit(., '/', fixed=TRUE) } %>%
+{ lapply(., tail, n=2) } %>%
+{ lapply(., paste0, collapse = '') } %>%
+  unlist
+
+names(train) = mynames
+names(test) = mynamestest
+
+```
+
+#### Extracting the Author names for Train and Test data
+```{r echo = T, results = 'hide'}
+authors = train_list %>%
+{ strsplit(., '/', fixed=TRUE) } %>%
+{ lapply(., function(x) x[5]) } %>%
+{ lapply(., paste0, collapse = '') } %>%
+  unlist
+
+authors_test = test_list %>%
+{ strsplit(., '/', fixed=TRUE) } %>%
+{ lapply(., function(x) x[5]) } %>%
+{ lapply(., paste0, collapse = '') } %>%
+  unlist
+
+```
+
+#### Generating the Corpus for train and test data
+```{r echo = T, results = 'hide'}
+documents_raw = Corpus(VectorSource(train))
+documents_raw_test = Corpus(VectorSource(test))
+```
+
+#### Tokenization
+
+```{r echo = T, results = 'hide',warning=FALSE}
+my_documents = documents_raw
+my_documents = tm_map(my_documents, content_transformer(tolower)) # make everything lowercase
+my_documents = tm_map(my_documents, content_transformer(removeNumbers)) # remove numbers
+my_documents = tm_map(my_documents, content_transformer(removePunctuation)) # remove punctuation
+my_documents = tm_map(my_documents, content_transformer(stripWhitespace)) ## remove excess white-space
+
+my_documents_test = documents_raw_test
+my_documents_test = tm_map(my_documents_test, content_transformer(tolower)) # make everything lowercase
+my_documents_test = tm_map(my_documents_test, content_transformer(removeNumbers)) # remove numbers
+my_documents_test = tm_map(my_documents_test, content_transformer(removePunctuation)) # remove punctuation
+my_documents_test = tm_map(my_documents_test, content_transformer(stripWhitespace)) ## remove excess white-space
+```
+
+#### Removing Stopwords
+
+```{r echo = T, results = 'hide',warning=FALSE}
+my_documents = tm_map(my_documents, content_transformer(removeWords), stopwords("en"))
+my_documents_test = tm_map(my_documents_test, content_transformer(removeWords), stopwords("en"))
+
+```
+
+#### Creating Doc-term-matrix
+Here we have created 2 set of train and test datasets
+The first set will involve dropping the uncommon words between the train and test dataset
+The second will involve including to test matrix the terms not present in test but in train as a dummy column with 0 assigned as the value
+
+```{r echo = T, results = 'hide',warning=FALSE}
+DTM_train = DocumentTermMatrix(my_documents)
+DTM_test = DocumentTermMatrix(my_documents_test)
+
+#Removing Sparse terms 
+DTM_train = removeSparseTerms(DTM_train, 0.95)
+DTM_test = removeSparseTerms(DTM_test, 0.95)
+
+#Not removing Sparse terms in case of the second train-test set
+DTM_train2 = DTM_train
+DTM_test2 <- DocumentTermMatrix(my_documents_test, control = list(dictionary=Terms(DTM_train2)))
+```
+
+#### Constructing TF-IDF weights for both the above sets discussed
+```{r echo = T, results = 'hide',warning=FALSE}
+tfidf_train = weightTfIdf(DTM_train)
+tfidf_test = weightTfIdf(DTM_test)
+
+tfidf_test2 = weightTfIdf(DTM_test2)
+tfidf_train2 = weightTfIdf(DTM_train2)
+
+```
+
+#### Dimensionlity Reduction: Principal Component Analysis
+```{r echo = T, results = 'hide',warning=FALSE}
+
+X = as.matrix(tfidf_train)
+X_test = as.matrix(tfidf_test)
+
+X2 = as.matrix(tfidf_train2)
+X_test2 = as.matrix(tfidf_test2)
+
+#Removing columns with entries with 0 values
+scrub_cols = which(colSums(X) == 0)
+scrub_cols_test = which(colSums(X_test) == 0)
+
+scrub_cols2 = which(colSums(X2) == 0)
+scrub_cols_test2 = which(colSums(X_test2) == 0)
+
+X = X[,-scrub_cols]
+X_test = X_test[,-scrub_cols_test]
+
+X2 = X2[,-scrub_cols]
+X_test2 = X_test2[,-scrub_cols_test2]
+```
+
+##### For the first set dropping the uncommon words
+```{r echo = T, results = 'hide',warning=FALSE}
+X_test <- X_test[,intersect(colnames(X_test),colnames(X))]
+X <- X[,intersect(colnames(X_test),colnames(X))]
+```
+
+##### Running PCA for the train sets and predicting the PCs for the test set 
+```{r echo = T, results = 'hide',warning=FALSE}
+pca_train = prcomp(X, scale=TRUE)
+pca_test=predict(pca_train,newdata = X_test )
+
+pca_train2 = prcomp(X2,scale=TRUE)
+pca_test2=predict(pca_train2,newdata = X_test2 )
+```
+
+Choosing number of PCs to be selected
+
+```{r}
+plot(pca_train,type='line')
+#summary(pca_train)
+
+vars <- apply(pca_train$x, 2, var)  
+props <- vars / sum(vars)
+cumsum(props)
+```
+
+```{r}
+plot(pca_train2,type='line')
+#summary(pca_train2)
+
+vars2 <- apply(pca_train2$x, 2, var)  
+props2 <- vars2 / sum(vars2)
+cumsum(props2)
+```
+
+Choosing 60% varability hence taking 207 PCs for first set and 217 PCs for second set
+
+Attaching target variable 'author' to the train and test datsets generated after generating PCs
+
+```{r echo = T,warning=FALSE}
+df_train = data.frame(pca_train$x[,1:207])
+df_train['author']=authors
+df_test = data.frame(pca_test[,1:207])
+df_test2 = df_test
+df_test2['author']=authors_test
+
+
+df_train_new = data.frame(pca_train2$x[,1:217])
+df_train_new['author']=authors
+df_test_new = data.frame(pca_test2[,1:217])
+df_test_new2 = df_test_new
+df_test_new2['author']=authors_test
+```
+
+#### Naive Bayes for intersected train-test
+```{r echo = T}
+library('e1071')
+nb_model = naiveBayes(as.factor(author) ~., data=df_train)
+nb_predictions_test = predict(nb_model,df_test)
+#table(nb_predictions_test,df_test$author)
+cm <- caret::confusionMatrix(nb_predictions_test,as.factor(df_test2$author))
+accuracy <- cm$overall['Accuracy']
+accuracy
+#nb_predictions_test
+#45%
+```
+#### Random Forest for intersected train-test
+
+```{r echo = T, results = 'hide',warning=FALSE}
+
+library('randomForest')
+rf_model = randomForest(as.factor(author) ~ ., data=df_train, ntree=100, mtry=15, importance=TRUE)
+rf_predictions_test = predict(rf_model,df_test)
+#table(rf_predictions_test,df_test2$author)
+cm <- caret::confusionMatrix(rf_predictions_test,as.factor(df_test2$author))
+accuracy <- cm$overall['Accuracy']
+accuracy
+#45%
+```
+
+#### Naive Bayes for psuedo word handled train-test
+```{r echo = T, warning=FALSE}
+nb_model_new = naiveBayes(as.factor(author) ~., data=df_train_new)
+nb_predictions_test_new = predict(nb_model_new,df_test_new)
+#table(nb_predictions_test,df_test$author)
+cm <- caret::confusionMatrix(nb_predictions_test_new,as.factor(df_test_new2$author))
+accuracy <- cm$overall['Accuracy']
+accuracy
+#nb_predictions_test
+#46%
+```
+
+#### Random Forest for psuedo word handled train-test
+```{r echo = T,warning=FALSE}
+rf_model_new = randomForest(as.factor(author) ~ ., data=df_train_new, ntree=100, mtry=15, importance=TRUE)
+rf_predictions_test_new = predict(rf_model_new,df_test_new)
+cm <- caret::confusionMatrix(rf_predictions_test_new,as.factor(df_test_new2$author))
+accuracy <- cm$overall['Accuracy']
+accuracy
+#45% accuracy
+```
+Hence, we can say that pseudo word handled data with Naive Bayes gives us the best results with 46% accuracy.
+
+
+
+
+
 
 
 
