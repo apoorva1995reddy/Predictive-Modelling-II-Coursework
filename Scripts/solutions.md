@@ -1,10 +1,200 @@
-Exercise2-Problem3
+Exercise2
 ================
-Anisha
 18 August 2018
 
-Association Rules
------------------
+Problem1
+--------
+
+Loading and cleaning data
+
+``` r
+ABIA=read.csv("../data/ABIA.csv")
+ABIA$ArrDelay[is.na(ABIA$ArrDelay)] = 0
+codes=read.csv("../data/airport-codes.csv")
+codes1=codes[c('name','coordinates','iata_code')]
+codes1=na.omit(codes1)
+codes1=codes1[!duplicated(codes1[c('iata_code')]),]
+ABIA$Week<- ABIA$DayOfWeek
+ABIA$Week[ABIA$DayOfWeek == 1] <- 'Monday'
+ABIA$Week[ABIA$DayOfWeek == 2] <- 'Tuesday'
+ABIA$Week[ABIA$DayOfWeek == 3] <- 'Wednesday'
+ABIA$Week[ABIA$DayOfWeek == 4] <- 'Thursday'
+ABIA$Week[ABIA$DayOfWeek == 5] <- 'Friday'
+ABIA$Week[ABIA$DayOfWeek == 6] <- 'Saturday'
+ABIA$Week[ABIA$DayOfWeek == 7] <- 'Sunday'
+ABIA$MonthQual<-ABIA$Month
+ABIA$MonthQual[ABIA$MonthQual == 1] <- 'January'
+ABIA$MonthQual[ABIA$MonthQual == 2] <- 'February'
+ABIA$MonthQual[ABIA$MonthQual == 3] <- 'March'
+ABIA$MonthQual[ABIA$MonthQual == 4] <- 'April'
+ABIA$MonthQual[ABIA$MonthQual == 5] <- 'May'
+ABIA$MonthQual[ABIA$MonthQual == 6] <- 'June'
+ABIA$MonthQual[ABIA$MonthQual == 7] <-'July'
+ABIA$MonthQual[ABIA$MonthQual == 8] <- 'August'
+ABIA$MonthQual[ABIA$MonthQual == 9] <- 'September'
+ABIA$MonthQual[ABIA$MonthQual == 10] <- 'October'
+ABIA$MonthQual[ABIA$MonthQual == 11] <- 'November'
+ABIA$MonthQual[ABIA$MonthQual == 12] <- 'December'
+
+ABIA$CancellationCode1="No cancellation"
+ABIA$CancellationCode1[ABIA$CancellationCode =='A']="Carrier"
+ABIA$CancellationCode1[ABIA$CancellationCode == 'B'] = 'Weather'
+ABIA$CancellationCode1[ABIA$CancellationCode == 'C'] = 'NAS'
+ABIA$CancellationCode1[ABIA$CancellationCode == 'D'] = 'Security'
+
+ABIA=merge(ABIA, codes1, by.x = "Dest", by.y = "iata_code")
+
+ABIA$Dephr=substr(ABIA$DepTime,1,nchar(ABIA$DepTime)-2)
+ABIA$Dephr[ABIA$Dephr == ''] = 0
+ABIA$Dephr=as.numeric(ABIA$Dephr)
+
+ABIA$Direction[ABIA$Dest=="AUS"]<-"To Aus"
+ABIA$Direction[ABIA$Origin=="AUS"]<-"From Aus"
+ABIA_notcancelled=ABIA[ABIA$Cancelled==0,]
+```
+
+``` r
+library(ggplot2)
+ggplot(ABIA_notcancelled, aes(Dephr)) + geom_bar(width=0.8,position="dodge",color="black")+
+  labs(x = "Dephr", y = "Count",title = "#Flights to and from Austin")+
+  theme(legend.text = element_text(colour="blue", size=10, 
+                                   face="bold"))
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-2-1.png)
+
+``` r
+FlighttofromAUS=table(ABIA_notcancelled$Direction,ABIA_notcancelled$Dephr)
+barplot(FlighttofromAUS, main="Successful flights",
+        xlab="Dep hr", col=c("orange","blue"),beside = TRUE,legend = rownames(FlighttofromAUS))
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-3-1.png)
+
+More traffic from 6AM-7PM
+
+``` r
+DF_Q1=cbind(aggregate(ArrDelay ~ Dephr+DayOfWeek, data = ABIA_notcancelled, FUN = function(x) c(mn = mean(x))),aggregate(ArrDelay ~ Dephr+Week, data = ABIA_notcancelled, FUN = function(x) c(mn = length(x))))
+DF_Q1=DF_Q1[,c(1,2,3,6)]
+colnames(DF_Q1)[3] <- "Avg_Arr_Delay"
+colnames(DF_Q1)[4] <- "flights"
+DF_Q1=na.omit(DF_Q1)
+```
+
+``` r
+library(ggplot2)
+require(viridis)
+```
+
+    ## Loading required package: viridis
+
+    ## Loading required package: viridisLite
+
+``` r
+library(ggthemes)
+
+ggplot(data = DF_Q1, aes(x=Dephr,y=as.factor(DayOfWeek))) + geom_tile(aes(fill=flights)) + scale_fill_viridis(option="magma")+xlab('Dephr')+theme_tufte(base_family="Helvetica")+ggtitle("No of Flights")+xlab("Time")
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-5-1.png)
+
+``` r
+ggplot(data = DF_Q1, aes(x = Dephr ,y = as.factor(DayOfWeek))) + 
+  geom_tile(aes(fill = Avg_Arr_Delay)) + 
+  coord_equal(ratio = 1)+ scale_fill_viridis(option="magma") + theme_tufte(base_family="Helvetica")+ggtitle("Avg delay in minutes")+xlab("Departure time")
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-6-1.png) Though there are very few flights during early mornings, avg delays tend to be longer for these flights
+
+``` r
+ABIA$CSRDephr_Correct = substr(ABIA$CRSDepTime,1,nchar(ABIA$CRSDepTime)-2)
+ABIA$CSRDephr_Correct=as.numeric(ABIA$CSRDephr_Correct)
+ABIA_cancelled=ABIA[ABIA$Cancelled==1,]
+DF_Q1_1=aggregate(Year ~ CSRDephr_Correct+DayOfWeek, data = ABIA_cancelled, FUN = function(x) c(mn = length(x)))
+colnames(DF_Q1_1)[3] <- "Cancellations"
+ggplot(data = DF_Q1_1, aes(x=CSRDephr_Correct,y=as.factor(DayOfWeek))) + geom_tile(aes(fill=Cancellations))+ scale_fill_viridis(option="magma")+xlab('CSRDephr_Correct')+theme_tufte(base_family="Helvetica")+ggtitle("Cancelled flights")+xlab("Time")
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-7-1.png)
+
+More cancellations on weekdays, specially tuesdays
+
+``` r
+DF_Q2=cbind(aggregate(ArrDelay ~ as.factor(Month), data = ABIA_notcancelled, FUN = function(x) c(mn = mean(x))),aggregate(ArrDelay ~ MonthQual, data = ABIA_notcancelled, FUN = function(x) c(mn = length(x))))
+DF_Q2=DF_Q2[,c(1,2,4)]
+colnames(DF_Q2)[2] <- "Avg_Arr_Delay"
+colnames(DF_Q2)[3] <- "flights"
+require(ggplot2)
+ggplot(data = ABIA_notcancelled, aes(x=as.factor(Month), y=ArrDelay)) + geom_boxplot()+scale_y_continuous(limits=c(0,200), breaks=seq(0,200,20), expand = c(0, 0))
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-8-1.png) There are many outliers, more spread and the median arrival delays are almost same across all the months.
+
+``` r
+MoM_Cancellations= table(ABIA_cancelled$CancellationCode1,ABIA_cancelled$Month)
+barplot(MoM_Cancellations, main="Cancelled flights",
+        xlab="Month", col=c("orange","red","blue"),
+        beside = TRUE,las=2,legend = rownames(MoM_Cancellations),args.legend = list(x = "topright",bty="n"))
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
+Majority of the flights cancelled during September month were because of bad weather.
+
+``` r
+Fromaustin=ABIA[ABIA$Origin=='AUS',]
+Fromaustin$Type='Successful'
+Fromaustin$Type[Fromaustin$Diverted == 1] = 'Diverted'
+Fromaustin$Type[Fromaustin$Cancelled == 1] = 'Cancelled'
+
+From_austin_successful=Fromaustin[Fromaustin$Type=='Successful',]
+From_austin_successful=table(From_austin_successful$Type,From_austin_successful$Dest)
+barplot(From_austin_successful, main="Successful flights",
+        xlab="Destination", col=c("darkblue"),legend = rownames(From_austin_successful),beside = TRUE,srt=90,las=2)
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-10-1.png)
+
+More traffic towards DAL,DFW,IAH,ORD, PHX,ATL
+
+``` r
+From_austin_failed=Fromaustin[Fromaustin$Type!='Successful',]
+From_austin_failed=table(From_austin_failed$Type,From_austin_failed$Dest)
+barplot(From_austin_failed, main="Cancelled/Diverted flights",
+        xlab="Destination", col=c("orange","red"),
+        legend = rownames(From_austin_failed),beside = TRUE,srt=90,las=2)
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
+DAL,DFW,ORD have higher cancellations More cancelled flights than diverted flights
+
+``` r
+Fromaustin_cancelledsplit=Fromaustin[Fromaustin$Cancelled==1,]
+Fromaustin_cancelledsplit= table(Fromaustin_cancelledsplit$CancellationCode1,Fromaustin_cancelledsplit$Dest)
+barplot(Fromaustin_cancelledsplit, main="Cancelled flights",
+        xlab="Destination", col=c("orange","red","blue"),
+        beside = TRUE,las=2,legend = rownames(Fromaustin_cancelledsplit),args.legend = list(x = "topright"))
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+Most of the cancellations are due to Carrier or Weather. ORD and DFW have very high cancelled flights because of NAS, delay that is within the control of the National Airspace System (NAS) may include: non-extreme weather conditions, airport operations, heavy traffic volume, air traffic control, etc
+
+``` r
+DF_Q4_1=aggregate(Year ~ name+Month, data = ABIA_cancelled[ABIA_cancelled$Origin=='AUS',], FUN = function(x) c(mn = length(x)))
+colnames(DF_Q4_1)[3] <- "Monthly_Cancellations"
+ggplot(data = DF_Q4_1, aes(x=as.factor(Month),y=name)) + geom_tile(aes(fill=Monthly_Cancellations))+ scale_fill_viridis(option="magma")+xlab('CSRDephr_Correct')+theme_tufte(base_family="Helvetica")+ggtitle("Cancelled flights")+xlab("Month")
+```
+
+![](Solutions_files/figure-markdown_github/unnamed-chunk-13-1.png)
+
+DL and DFW airorts had many cancellations in the first half year, the numbers improved great deal in the later part of the year
+
+You can see that William P Hobby aiport and George Bush International airpoprts had more cancellations in September that increased the overall cancellations due to bad weather for the month. This is because of Hurrican Ike, tropical cyclone , sixth costliest Atlantic hurraine that severely affected Texas
+
+Problem3
+--------
 
 We have multiple baskets of grocery items and will find some interesting association rules using the items in these baskets. This is how the data looks like after reading from the text file:
 
@@ -95,12 +285,12 @@ groceryrules = apriori(gro_trans,
     ## writing ... [872 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
 
-This created 872 rules. Let us plot these rules. ![](solution3_files/figure-markdown_github/unnamed-chunk-5-1.png)
+This created 872 rules. Let us plot these rules. ![](Solutions_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 It is observed that rules with high lift have low support.
 
 Looking at the two-key plot for studying the variations in rules with size of itemset:
-![](solution3_files/figure-markdown_github/unnamed-chunk-6-1.png)
+![](Solutions_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 All the rules of higher order have low support and itemsets of lower order have low confidence. Lets examine these rules.
 
@@ -254,10 +444,10 @@ sub1 = subset(groceryrules, subset=support > 0.025 & confidence > 0.35)
 plot(sub1, method='graph')
 ```
 
-![](solution3_files/figure-markdown_github/unnamed-chunk-10-1.png)
+![](Solutions_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
 ``` r
 plot(head(sub1, 5, by='lift'), method='graph')
 ```
 
-![](solution3_files/figure-markdown_github/unnamed-chunk-10-2.png)
+![](Solutions_files/figure-markdown_github/unnamed-chunk-23-2.png)
