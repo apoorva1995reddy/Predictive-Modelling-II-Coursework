@@ -1,4 +1,4 @@
-Solutions to Predicctive Modelling Excercise 2 
+Solutions to Predictive Modelling Excercise 2 
 
 Problem 1: Flights delay - Exploratory data analysis 
 Problem 2: Text Analysis - Predicting Author's 
